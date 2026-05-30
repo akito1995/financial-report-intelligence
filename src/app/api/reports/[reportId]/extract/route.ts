@@ -21,8 +21,24 @@ type PdfParserConstructor = new (options: { data: Buffer }) => {
   destroy: () => Promise<void> | void;
 };
 
+function getErrorName(error: unknown) {
+  return error instanceof Error ? error.name : "UnknownError";
+}
+
+function getErrorDetail(error: unknown) {
+  if (!(error instanceof Error) || !error.message) {
+    return "Không có mô tả lỗi từ parser.";
+  }
+
+  return error.message.replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
 function isPdfReport(fileName: string, fileType: string) {
   return fileType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
+}
+
+function hasPdfSignature(fileBuffer: Buffer) {
+  return fileBuffer.subarray(0, 4).toString("utf8") === "%PDF";
 }
 
 function createPreview(rawText: string) {
@@ -39,6 +55,21 @@ function getUnexpectedErrorMessage(error: unknown) {
   }
 
   return "Không thể xử lý yêu cầu trích xuất text. Vui lòng kiểm tra cấu hình Supabase và thử lại.";
+}
+
+function getPdfParsingErrorMessage(error: unknown) {
+  const errorName = getErrorName(error);
+  const detail = getErrorDetail(error);
+
+  if (errorName === "PasswordException") {
+    return "PDF đang được bảo vệ bằng mật khẩu nên chưa thể trích xuất text.";
+  }
+
+  if (errorName === "InvalidPDFException" || errorName === "FormatError") {
+    return `PDF không hợp lệ hoặc bị lỗi cấu trúc nên chưa thể trích xuất text. Mã lỗi: ${errorName}.`;
+  }
+
+  return `Không thể trích xuất text từ PDF. Mã lỗi: ${errorName}. Chi tiết: ${detail}`;
 }
 
 export async function POST(_request: Request, context: RouteContext) {
@@ -145,6 +176,23 @@ export async function POST(_request: Request, context: RouteContext) {
         PDFParse: PdfParserConstructor;
       };
       const fileBuffer = Buffer.from(await fileBlob.arrayBuffer());
+
+      if (!hasPdfSignature(fileBuffer)) {
+        const message =
+          "File tải về từ kho lưu trữ không có định dạng PDF hợp lệ. Vui lòng tải lại báo cáo.";
+        await insertExtraction({
+          rawText: "",
+          pageCount: null,
+          status: "failed",
+          errorMessage: message,
+        });
+        await updateReportStatus("extraction_failed");
+
+        return createJsonResponse(message, 422, {
+          extractionStatus: "failed",
+        });
+      }
+
       parser = new PDFParse({ data: fileBuffer });
       const textResult = await parser.getText();
       const rawText = textResult.text.trim();
@@ -190,8 +238,8 @@ export async function POST(_request: Request, context: RouteContext) {
         pageCount: textResult.total || null,
         preview: createPreview(rawText),
       });
-    } catch {
-      const message = "Không thể trích xuất text từ PDF. Vui lòng thử lại với file PDF khác.";
+    } catch (error) {
+      const message = getPdfParsingErrorMessage(error);
       await insertExtraction({
         rawText: "",
         pageCount: null,
