@@ -86,6 +86,19 @@ function hasCompletedRawText(report: ReportListItem) {
   return report.latestExtraction?.status === "completed" && Boolean(report.latestExtraction.rawTextPreview);
 }
 
+async function readJsonResponse<T extends { message: string }>(
+  response: Response,
+  fallbackMessage: string,
+) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as T;
+  }
+
+  return { message: fallbackMessage } as T;
+}
+
 export function ReportsClientTable({ initialReports }: ReportsClientTableProps) {
   const router = useRouter();
   const [reports, setReports] = useState(initialReports);
@@ -111,7 +124,10 @@ export function ReportsClientTable({ initialReports }: ReportsClientTableProps) 
       const response = await fetch(`/api/reports/${reportId}/extract`, {
         method: "POST",
       });
-      const result = (await response.json()) as RawExtractionResponse;
+      const result = await readJsonResponse<RawExtractionResponse>(
+        response,
+        "Không thể trích xuất text từ báo cáo. Vui lòng kiểm tra log triển khai và thử lại.",
+      );
 
       if (!response.ok) {
         setMessages((current) => ({
@@ -191,7 +207,10 @@ export function ReportsClientTable({ initialReports }: ReportsClientTableProps) 
       const response = await fetch(`/api/reports/${reportId}/extract-structured`, {
         method: "POST",
       });
-      const result = (await response.json()) as StructuredExtractionResponse;
+      const result = await readJsonResponse<StructuredExtractionResponse>(
+        response,
+        "Trích xuất dữ liệu tài chính thất bại. Vui lòng kiểm tra log triển khai và thử lại.",
+      );
 
       if (!response.ok) {
         setMessages((current) => ({
