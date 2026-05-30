@@ -1,80 +1,32 @@
 import { redirect } from "next/navigation";
+import { ReportsClientTable, type ReportListItem } from "./reports-client-table";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseDatabase } from "@/types/database";
-import type { ReportStatus } from "@/types/report";
 
 type ReportRow = SupabaseDatabase["public"]["Tables"]["reports"]["Row"];
+type RawExtractionRow = SupabaseDatabase["public"]["Tables"]["raw_extractions"]["Row"];
 
-const columns = [
-  "Tên báo cáo",
-  "Công ty",
-  "Kỳ báo cáo",
-  "Trạng thái",
-  "Ngày tải lên",
-  "Thao tác",
-];
-
-const statusLabels: Record<ReportStatus, string> = {
-  uploaded: "Đã tải lên",
-  extracting: "Đang trích xuất",
-  extraction_failed: "Trích xuất thất bại",
-  ready_for_review: "Chờ kiểm tra",
-  reviewed: "Đã kiểm tra",
-  analyzing: "Đang phân tích",
-  analysis_failed: "Phân tích thất bại",
-  analyzed: "Đã phân tích",
-  exported: "Đã xuất báo cáo",
-};
-
-function formatDate(dateValue: string) {
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(dateValue));
+function createPreview(rawText: string) {
+  return rawText.replace(/\s+/g, " ").trim().slice(0, 2000);
 }
 
-function StatusBadge({ status }: { status: ReportStatus }) {
-  return (
-    <span className="rounded-full border border-cyan-100/25 bg-cyan-300/15 px-3 py-1 text-xs font-semibold text-cyan-50">
-      {statusLabels[status] ?? "Chưa xác định"}
-    </span>
-  );
-}
-
-function ReportsRows({ reports }: { reports: ReportRow[] }) {
-  if (reports.length === 0) {
-    return (
-      <tr>
-        <td colSpan={columns.length} className="px-4 py-16 text-center text-cyan-50/70">
-          Chưa có báo cáo nào được tải lên.
-        </td>
-      </tr>
-    );
-  }
-
-  return reports.map((report) => (
-    <tr key={report.id} className="border-b border-cyan-100/10 last:border-0">
-      <td className="px-4 py-4 font-medium text-white">{report.file_name}</td>
-      <td className="px-4 py-4 text-cyan-50/76">{report.company_name ?? "Chưa xác định"}</td>
-      <td className="px-4 py-4 text-cyan-50/76">{report.reporting_period ?? "Chưa xác định"}</td>
-      <td className="px-4 py-4">
-        <StatusBadge status={report.status} />
-      </td>
-      <td className="px-4 py-4 text-cyan-50/76">{formatDate(report.created_at)}</td>
-      <td className="px-4 py-4">
-        <button
-          type="button"
-          disabled
-          className="rounded-xl border border-cyan-100/20 bg-white/8 px-3 py-2 text-xs font-semibold text-cyan-50/60"
-        >
-          Chờ xử lý
-        </button>
-      </td>
-    </tr>
-  ));
+function mapReport(report: ReportRow, extraction: RawExtractionRow | undefined): ReportListItem {
+  return {
+    id: report.id,
+    fileName: report.file_name,
+    companyName: report.company_name,
+    reportingPeriod: report.reporting_period,
+    status: report.status,
+    createdAt: report.created_at,
+    latestExtraction: extraction
+      ? {
+          status: extraction.status,
+          rawTextPreview: createPreview(extraction.raw_text),
+          errorMessage: extraction.error_message,
+          pageCount: extraction.page_count,
+        }
+      : null,
+  };
 }
 
 export async function ReportsTable() {
@@ -101,24 +53,31 @@ export async function ReportsTable() {
     );
   }
 
+  const safeReports = reports ?? [];
+  const reportIds = safeReports.map((report) => report.id);
+  let latestExtractionByReportId = new Map<string, RawExtractionRow>();
+
+  if (reportIds.length > 0) {
+    const { data: extractions } = await supabase
+      .from("raw_extractions")
+      .select("*")
+      .eq("user_id", user.id)
+      .in("report_id", reportIds)
+      .order("created_at", { ascending: false });
+
+    latestExtractionByReportId = new Map();
+    (extractions ?? []).forEach((extraction) => {
+      if (!latestExtractionByReportId.has(extraction.report_id)) {
+        latestExtractionByReportId.set(extraction.report_id, extraction);
+      }
+    });
+  }
+
   return (
-    <div className="glass-control overflow-hidden rounded-3xl">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-          <thead>
-            <tr className="border-b border-cyan-100/20 bg-white/10 text-cyan-50">
-              {columns.map((column) => (
-                <th key={column} className="px-4 py-4 font-semibold">
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <ReportsRows reports={reports ?? []} />
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <ReportsClientTable
+      initialReports={safeReports.map((report) =>
+        mapReport(report, latestExtractionByReportId.get(report.id)),
+      )}
+    />
   );
 }

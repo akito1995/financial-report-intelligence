@@ -1,50 +1,48 @@
 # Database schema dự kiến
 
-Tài liệu này mô tả schema dự kiến cho Financial Report Intelligence. Đây là thiết kế nền tảng cho các task sau, chưa phải migration SQL chính thức và chưa triển khai đọc/ghi dữ liệu trong ứng dụng.
+Tài liệu này mô tả schema dự kiến cho Financial Report Intelligence. Đây là thiết kế nền tảng, chưa phải toàn bộ migration cuối cùng.
 
 ## Nguyên tắc dữ liệu
 
-- Không lưu kết quả phân tích như dữ liệu thật nếu chưa có báo cáo gốc và dữ liệu đã được người dùng kiểm tra.
-- Các chỉ số tài chính trong `financial_metrics` phải được tính bằng công thức cố định trong code ở các task sau.
-- Các insight AI trong `ai_insights` phải có nguồn dữ liệu, giới hạn phân tích và mức độ tin cậy khi được triển khai.
-- Các điểm bất thường trong `anomalies` phải có bằng chứng trong trường `evidence`.
-- Trạng thái xử lý báo cáo được quản lý bằng `reports.status`.
+- Không bịa số liệu tài chính.
+- Không lưu insight AI như dữ liệu thật nếu chưa có bằng chứng và mức độ tin cậy.
+- Các phép tính tài chính ở các task sau phải được tính bằng công thức cố định trong code.
+- Người dùng phải kiểm tra dữ liệu đã trích xuất trước khi phân tích.
+- Task trích xuất text thô chỉ lưu text gốc từ PDF có text layer, chưa phân tích nội dung.
 
-## Bảng `profiles`
-
-Hồ sơ người dùng mở rộng, liên kết với hệ thống authentication sẽ được triển khai sau.
+## `profiles`
 
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |
 | `id` | `uuid` | Primary key |
 | `email` | `text` | Email người dùng |
 | `full_name` | `text` | Nullable |
-| `created_at` | `timestamp` | Thời điểm tạo hồ sơ |
+| `created_at` | `timestamp` | Thời điểm tạo |
 
-## Bảng `reports`
-
-Lưu metadata của báo cáo tài chính đã tải lên trong tương lai.
+## `reports`
 
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |
 | `id` | `uuid` | Primary key |
 | `user_id` | `uuid` | Người sở hữu báo cáo |
 | `file_name` | `text` | Tên file gốc |
-| `file_path` | `text` | Đường dẫn file trong storage |
-| `file_type` | `text` | Loại file, ví dụ PDF |
+| `file_path` | `text` | Đường dẫn file trong Storage |
+| `file_type` | `text` | Loại file |
 | `file_size` | `bigint` | Dung lượng file |
 | `company_name` | `text` | Nullable |
 | `reporting_period` | `text` | Nullable |
 | `report_type` | `text` | Nullable |
 | `status` | `text` | Trạng thái xử lý |
 | `created_at` | `timestamp` | Thời điểm tạo |
-| `updated_at` | `timestamp` | Thời điểm cập nhật gần nhất |
+| `updated_at` | `timestamp` | Thời điểm cập nhật |
 
 Trạng thái dự kiến:
 
 - `uploaded`
 - `extracting`
 - `extraction_failed`
+- `unsupported_file_type`
+- `no_text_layer`
 - `ready_for_review`
 - `reviewed`
 - `analyzing`
@@ -52,9 +50,33 @@ Trạng thái dự kiến:
 - `analyzed`
 - `exported`
 
-## Bảng `extracted_statements`
+## `raw_extractions`
 
-Lưu dữ liệu báo cáo đã được trích xuất để người dùng kiểm tra và chỉnh sửa trước khi phân tích.
+Lưu text thô được trích xuất từ PDF có text layer. Bảng này không lưu kết quả phân tích tài chính, không chuẩn hóa bảng số liệu và không chứa insight AI.
+
+| Cột | Kiểu dữ liệu | Ghi chú |
+| --- | --- | --- |
+| `id` | `uuid` | Primary key |
+| `report_id` | `uuid` | Liên kết tới `reports.id` |
+| `user_id` | `uuid` | Liên kết tới `auth.users.id` |
+| `raw_text` | `text` | Text thô trích xuất từ PDF |
+| `page_count` | `integer` | Nullable |
+| `extraction_method` | `text` | Ví dụ `pdf_text_layer` |
+| `status` | `text` | Trạng thái trích xuất |
+| `error_message` | `text` | Nullable |
+| `created_at` | `timestamp` | Thời điểm tạo |
+| `updated_at` | `timestamp` | Thời điểm cập nhật |
+
+Trạng thái dự kiến:
+
+- `pending`
+- `extracting`
+- `completed`
+- `failed`
+- `unsupported_file_type`
+- `no_text_layer`
+
+## `extracted_statements`
 
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |
@@ -65,26 +87,22 @@ Lưu dữ liệu báo cáo đã được trích xuất để người dùng ki�
 | `currency` | `text` | Nullable |
 | `unit` | `text` | Nullable |
 | `data` | `jsonb` | Dữ liệu đã trích xuất |
-| `warnings` | `jsonb` | Nullable, cảnh báo trong quá trình trích xuất |
-| `confidence` | `numeric` | Nullable, mức tin cậy trích xuất |
+| `warnings` | `jsonb` | Nullable |
+| `confidence` | `numeric` | Nullable |
 | `created_at` | `timestamp` | Thời điểm tạo |
 
-## Bảng `financial_metrics`
-
-Lưu các chỉ số tài chính được tính từ dữ liệu đã được kiểm tra.
+## `financial_metrics`
 
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |
 | `id` | `uuid` | Primary key |
 | `report_id` | `uuid` | Liên kết tới `reports.id` |
 | `period` | `text` | Nullable |
-| `metrics` | `jsonb` | Kết quả tính toán bằng công thức cố định |
-| `missing_inputs` | `jsonb` | Nullable, các đầu vào bị thiếu |
+| `metrics` | `jsonb` | Kết quả tính bằng công thức cố định |
+| `missing_inputs` | `jsonb` | Nullable |
 | `created_at` | `timestamp` | Thời điểm tạo |
 
-## Bảng `anomalies`
-
-Lưu các điểm bất thường được phát hiện từ dữ liệu và chỉ số đã tính.
+## `anomalies`
 
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |
@@ -98,25 +116,21 @@ Lưu các điểm bất thường được phát hiện từ dữ liệu và ch�
 | `suggested_follow_up` | `text` | Nullable |
 | `created_at` | `timestamp` | Thời điểm tạo |
 
-## Bảng `ai_insights`
-
-Lưu insight AI sau khi dữ liệu đã được xác nhận và phân tích nền tảng đã hoàn tất.
+## `ai_insights`
 
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |
 | `id` | `uuid` | Primary key |
 | `report_id` | `uuid` | Liên kết tới `reports.id` |
 | `executive_summary` | `text` | Tóm tắt điều hành |
-| `positive_points` | `jsonb` | Các điểm tích cực có bằng chứng |
-| `risk_points` | `jsonb` | Các rủi ro có bằng chứng |
-| `anomalies_explained` | `jsonb` | Giải thích điểm bất thường |
+| `positive_points` | `jsonb` | Điểm tích cực có bằng chứng |
+| `risk_points` | `jsonb` | Rủi ro có bằng chứng |
+| `anomalies_explained` | `jsonb` | Giải thích bất thường |
 | `follow_up_questions` | `jsonb` | Câu hỏi cần làm rõ |
 | `limitations` | `jsonb` | Giới hạn phân tích |
 | `created_at` | `timestamp` | Thời điểm tạo |
 
-## Bảng `report_exports`
-
-Lưu metadata của file xuất báo cáo ở các task sau.
+## `report_exports`
 
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |

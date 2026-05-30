@@ -9,7 +9,7 @@ export default function ReportsPage() {
         <PageHeader
           eyebrow="Danh sách báo cáo"
           title="Kho báo cáo tài chính"
-          description="Danh sách bên dưới chỉ hiển thị các báo cáo thuộc tài khoản đang đăng nhập. Bước này chưa có trang chi tiết hoặc phân tích báo cáo."
+          description="Danh sách bên dưới chỉ hiển thị các báo cáo thuộc tài khoản đang đăng nhập. Có thể trích xuất text thô từ PDF có lớp text, chưa phân tích nội dung tài chính."
         />
 
         <ReportsTable />

@@ -1,16 +1,14 @@
 # Hướng dẫn setup dự án
 
-Tài liệu này hướng dẫn chạy local dự án Financial Report Intelligence. Hiện tại ứng dụng đã có đăng nhập Supabase Auth, tải file lên Supabase Storage và tạo bản ghi trong bảng `reports`. Chưa triển khai OCR, đọc nội dung PDF, OpenAI, phân tích tài chính thật hoặc xuất PDF.
+Financial Report Intelligence hiện hỗ trợ đăng nhập Supabase Auth, tải file lên Supabase Storage, tạo bản ghi `reports`, và trích xuất text thô từ PDF có text layer. Ứng dụng chưa OCR ảnh/PDF scan, chưa gọi OpenAI, chưa phân tích tài chính và chưa xuất PDF.
 
 ## 1. Cài dependencies
-
-Chạy lệnh sau tại thư mục gốc dự án:
 
 ```bash
 npm install
 ```
 
-Trên Windows PowerShell, nếu `npm` bị chặn bởi execution policy, có thể dùng:
+Trên Windows PowerShell, nếu `npm` bị chặn bởi execution policy:
 
 ```bash
 npm.cmd install
@@ -18,27 +16,17 @@ npm.cmd install
 
 ## 2. Chạy local
 
-Khởi động dev server:
-
 ```bash
 npm run dev
 ```
 
-Nếu dùng Windows PowerShell và gặp lỗi tương tự, dùng:
-
-```bash
-npm.cmd run dev
-```
-
-Sau khi chạy thành công, mở:
+Mở:
 
 ```text
 http://localhost:3000
 ```
 
-## 3. Biến môi trường cần thiết
-
-Dự án dùng các biến sau:
+## 3. Biến môi trường
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=
@@ -47,45 +35,28 @@ SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 ```
 
-Để đăng nhập, tải file và ghi bảng `reports` hoạt động, cần điền ít nhất:
+Hiện app cần:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-Ý nghĩa:
+`SUPABASE_SERVICE_ROLE_KEY` và `OPENAI_API_KEY` chưa được dùng trong client. Không commit key thật lên GitHub.
 
-- `NEXT_PUBLIC_SUPABASE_URL`: URL Supabase project, được phép dùng ở browser client.
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: anon key Supabase, được phép dùng ở browser client theo chính sách Row Level Security phù hợp.
-- `SUPABASE_SERVICE_ROLE_KEY`: service role key cho tác vụ server-side đặc quyền ở task sau. Không dùng ở frontend.
-- `OPENAI_API_KEY`: key OpenAI cho các task AI sau. Chưa được sử dụng trong task này.
+## 4. Supabase Auth
 
-## 4. Cách tạo Supabase project
-
-1. Đăng nhập Supabase.
-2. Tạo project mới.
-3. Vào phần cấu hình API của project.
-4. Lấy `Project URL` và `anon public key`.
-5. Lưu các giá trị này vào `.env.local`.
-
-## 5. Bật Email/Password Auth
-
-1. Trong Supabase project, mở khu vực Authentication.
-2. Vào phần Providers.
+1. Mở Supabase Dashboard.
+2. Vào Authentication.
 3. Bật Email provider.
 4. Bật đăng nhập bằng email và mật khẩu.
-5. Tạo người dùng thử nghiệm trong Supabase Dashboard nếu cần kiểm tra đăng nhập.
+5. Tạo user test nếu cần.
 
-Ứng dụng hiện chỉ có form đăng nhập. Chưa có đăng ký tài khoản, forgot password, role-based permission hoặc tạo profile tự động.
+## 5. Storage bucket
 
-## 6. Tạo bucket `financial-reports`
+Tạo bucket thủ công:
 
-Tạo bucket thủ công trong Supabase Storage:
-
-1. Mở Storage trong Supabase Dashboard.
-2. Chọn tạo bucket mới.
-3. Đặt tên bucket là `financial-reports`.
-4. Nên để bucket ở chế độ private.
-5. Không tạo bucket bằng code trong ứng dụng.
+- Tên bucket: `financial-reports`
+- Nên để private.
+- Không tạo bucket bằng code trong app.
 
 File được lưu theo cấu trúc:
 
@@ -93,9 +64,7 @@ File được lưu theo cấu trúc:
 {user_id}/{timestamp}-{safe_file_name}
 ```
 
-## 7. Tạo bảng `reports`
-
-Chạy SQL gợi ý sau trong Supabase SQL Editor nếu bảng `reports` chưa tồn tại:
+## 6. Bảng `reports`
 
 ```sql
 create table if not exists public.reports (
@@ -117,11 +86,13 @@ create index if not exists reports_user_id_created_at_idx
   on public.reports (user_id, created_at desc);
 ```
 
-Các trường `company_name`, `reporting_period` và `report_type` để `null` cho đến khi có bước trích xuất và kiểm tra dữ liệu.
+Nếu bảng đã tồn tại trước Task 3.1, cập nhật constraint/status theo nhu cầu nội bộ. App hiện dùng thêm các status:
 
-## 8. Bật Row Level Security cho `reports`
+- `unsupported_file_type`
+- `no_text_layer`
+- `ready_for_review`
 
-Chạy SQL gợi ý:
+## 7. RLS cho `reports`
 
 ```sql
 alter table public.reports enable row level security;
@@ -148,11 +119,56 @@ for delete
 using (auth.uid() = user_id);
 ```
 
-Policy delete được chuẩn bị cho task sau nếu có chức năng xóa báo cáo.
+## 8. Bảng `raw_extractions`
 
-## 9. Policy Storage cho bucket `financial-reports`
+Task 3.1 chỉ trích xuất raw text từ PDF có text layer. File ảnh, PDF scan hoặc PDF không có text layer sẽ cần OCR ở task sau.
 
-Nếu bucket private và RLS Storage đang bật, cần policy để người dùng chỉ thao tác trong thư mục theo `user_id` của chính mình:
+```sql
+create table if not exists public.raw_extractions (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references public.reports(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  raw_text text not null,
+  page_count integer null,
+  extraction_method text not null,
+  status text not null,
+  error_message text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists raw_extractions_user_report_created_idx
+  on public.raw_extractions (user_id, report_id, created_at desc);
+```
+
+## 9. RLS cho `raw_extractions`
+
+```sql
+alter table public.raw_extractions enable row level security;
+
+create policy "Nguoi dung xem text tho cua chinh minh"
+on public.raw_extractions
+for select
+using (auth.uid() = user_id);
+
+create policy "Nguoi dung tao text tho cua chinh minh"
+on public.raw_extractions
+for insert
+with check (auth.uid() = user_id);
+
+create policy "Nguoi dung cap nhat text tho cua chinh minh"
+on public.raw_extractions
+for update
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "Nguoi dung xoa text tho cua chinh minh"
+on public.raw_extractions
+for delete
+using (auth.uid() = user_id);
+```
+
+## 10. Storage policies
 
 ```sql
 create policy "Nguoi dung tai file vao thu muc cua minh"
@@ -192,42 +208,31 @@ using (
 );
 ```
 
-Ứng dụng hiện chỉ dùng thao tác upload file. Các policy select, update và delete giúp chuẩn bị cho các bước quản lý file sau này.
+## 11. Vercel
 
-## 10. Cách dùng `.env.example`
+Sau khi deploy Vercel, kiểm tra các biến môi trường Supabase đã được set đúng:
 
-Sao chép `.env.example` thành `.env.local` trên máy local:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-```bash
-copy .env.example .env.local
-```
+Sau khi thêm hoặc sửa biến môi trường, redeploy project.
 
-Sau đó điền giá trị thật vào `.env.local`.
-
-Không điền key thật vào `.env.example`.
-
-## 11. Lưu ý bảo mật
+## 12. Lưu ý bảo mật
 
 - Không commit `.env.local`.
-- Không commit secret key vào repository.
-- Không hiển thị secret key trên giao diện người dùng.
+- Không commit secret key.
 - Không expose `SUPABASE_SERVICE_ROLE_KEY` ra client.
-- Browser client chỉ được dùng `NEXT_PUBLIC_SUPABASE_URL` và `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-- Query danh sách báo cáo phải lọc theo `user_id` của user hiện tại.
-- Bật RLS để user không xem hoặc ghi báo cáo của user khác.
-- Không log mật khẩu hoặc thông tin nhạy cảm.
+- Query report và raw extraction phải lọc theo `user_id`.
+- Không log raw text dài ra console.
+- Không gửi file hoặc text cho OpenAI trong Task 3.1.
 
-## 12. Phạm vi chưa triển khai
+## 13. Phạm vi chưa triển khai
 
-Các phần sau sẽ được triển khai ở những task tiếp theo:
-
-- Đăng ký tài khoản.
-- Forgot password.
-- Role-based permission.
-- Tạo profile tự động.
-- OCR hoặc trích xuất PDF.
-- Đọc nội dung báo cáo.
-- Kết nối OpenAI.
-- Phân tích tài chính thật.
-- Dashboard có dữ liệu thật.
-- Xuất báo cáo PDF.
+- OCR ảnh hoặc PDF scan.
+- Extract bảng tài chính thành JSON.
+- Phân tích báo cáo tài chính.
+- Tính metrics.
+- Phát hiện bất thường.
+- Tạo insight AI.
+- Dashboard thật.
+- Xuất PDF.

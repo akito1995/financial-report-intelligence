@@ -1,4 +1,10 @@
-import type { AnomalySeverity, InsightConfidence, JsonValue, ReportStatus } from "./report";
+import type {
+  AnomalySeverity,
+  InsightConfidence,
+  JsonValue,
+  RawExtractionStatus,
+  ReportStatus,
+} from "./report";
 
 export interface SupabaseDatabase {
   public: {
@@ -105,6 +111,45 @@ export interface SupabaseDatabase {
           warnings?: JsonValue | null;
           confidence?: number | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      raw_extractions: {
+        Row: {
+          id: string;
+          report_id: string;
+          user_id: string;
+          raw_text: string;
+          page_count: number | null;
+          extraction_method: string;
+          status: RawExtractionStatus;
+          error_message: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          report_id: string;
+          user_id: string;
+          raw_text: string;
+          page_count?: number | null;
+          extraction_method: string;
+          status: RawExtractionStatus;
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          report_id?: string;
+          user_id?: string;
+          raw_text?: string;
+          page_count?: number | null;
+          extraction_method?: string;
+          status?: RawExtractionStatus;
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
