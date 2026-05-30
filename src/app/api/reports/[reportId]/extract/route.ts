@@ -130,6 +130,13 @@ function getSupabaseErrorDetail(error: { message?: string; code?: string; detail
     return "Không có chi tiết lỗi từ Supabase.";
   }
 
+  if (
+    error.code === "PGRST205" ||
+    error.message?.includes("public.raw_extractions")
+  ) {
+    return "Bảng raw_extractions chưa tồn tại trong Supabase. Vui lòng chạy SQL setup cho bảng raw_extractions và RLS policy.";
+  }
+
   return [error.code, error.message, error.details]
     .filter(Boolean)
     .join(" - ")
