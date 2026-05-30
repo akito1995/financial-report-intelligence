@@ -97,6 +97,14 @@ function createPreview(rawText: string) {
   return rawText.replace(/\s+/g, " ").trim().slice(0, 2000);
 }
 
+function sanitizeRawText(rawText: string) {
+  return rawText
+    .replace(/\u0000/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+}
+
 function createJsonResponse(message: string, status: number, extra?: Record<string, unknown>) {
   return NextResponse.json({ message, ...extra }, { status });
 }
@@ -115,6 +123,19 @@ function getErrorDetail(error: unknown) {
   }
 
   return error.message.replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+function getSupabaseErrorDetail(error: { message?: string; code?: string; details?: string } | null) {
+  if (!error) {
+    return "Không có chi tiết lỗi từ Supabase.";
+  }
+
+  return [error.code, error.message, error.details]
+    .filter(Boolean)
+    .join(" - ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 220);
 }
 
 function getUnexpectedErrorMessage(error: unknown) {
@@ -221,7 +242,7 @@ export async function POST(_request: Request, context: RouteContext) {
       return supabase.from("raw_extractions").insert({
         report_id: ownedReport.id,
         user_id: userId,
-        raw_text: params.rawText,
+        raw_text: sanitizeRawText(params.rawText),
         page_count: params.pageCount,
         extraction_method: params.extractionMethod,
         status: params.status,
@@ -237,8 +258,21 @@ export async function POST(_request: Request, context: RouteContext) {
       extractionMethod: string;
       message: string;
     }) {
+      const cleanedRawText = sanitizeRawText(params.rawText);
+
+      if (cleanedRawText.length < 20) {
+        await updateReportStatus("extraction_failed");
+        return createJsonResponse(
+          "Đã xử lý file nhưng text trích xuất quá ngắn để lưu. File này có thể cần OCR chất lượng cao hơn.",
+          422,
+          {
+            extractionStatus: "failed",
+          },
+        );
+      }
+
       const { error: insertError } = await insertExtraction({
-        rawText: params.rawText,
+        rawText: cleanedRawText,
         pageCount: params.pageCount,
         status: "completed",
         errorMessage: null,
@@ -248,7 +282,7 @@ export async function POST(_request: Request, context: RouteContext) {
       if (insertError) {
         await updateReportStatus("extraction_failed");
         return createJsonResponse(
-          "Đã trích xuất text nhưng chưa lưu được kết quả. Vui lòng kiểm tra bảng raw_extractions.",
+          `Đã trích xuất text nhưng chưa lưu được kết quả. Lỗi Supabase: ${getSupabaseErrorDetail(insertError)}.`,
           500,
           {
             extractionStatus: "failed",
@@ -261,7 +295,7 @@ export async function POST(_request: Request, context: RouteContext) {
       return createJsonResponse(params.message, 200, {
         extractionStatus: "completed",
         pageCount: params.pageCount,
-        preview: createPreview(params.rawText),
+        preview: createPreview(cleanedRawText),
       });
     }
 
