@@ -36,6 +36,20 @@ type PdfParserConstructor = new (options: { data: Buffer }) => {
   destroy: () => Promise<void> | void;
 };
 
+type CanvasPolyfills = {
+  DOMMatrix: typeof globalThis.DOMMatrix;
+  ImageData: typeof globalThis.ImageData;
+  Path2D: typeof globalThis.Path2D;
+};
+
+async function ensureCanvasPolyfills() {
+  const canvas = (await import("@napi-rs/canvas")) as unknown as CanvasPolyfills;
+
+  globalThis.DOMMatrix ??= canvas.DOMMatrix;
+  globalThis.ImageData ??= canvas.ImageData;
+  globalThis.Path2D ??= canvas.Path2D;
+}
+
 function getOcrMaxPages() {
   const parsedValue = Number(process.env.OCR_MAX_PAGES ?? defaultOcrMaxPages);
 
@@ -346,6 +360,7 @@ export async function POST(_request: Request, context: RouteContext) {
     let parser: InstanceType<PdfParserConstructor> | null = null;
 
     try {
+      await ensureCanvasPolyfills();
       const { PDFParse } = (await import("pdf-parse")) as {
         PDFParse: PdfParserConstructor;
       };
