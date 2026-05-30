@@ -16,7 +16,7 @@ type RouteContext = {
   }>;
 };
 
-type PdfParserConstructor = new (options: { data: Buffer }) => {
+type PdfParserInstance = {
   getText: () => Promise<{
     text: string;
     total?: number;
@@ -34,6 +34,11 @@ type PdfParserConstructor = new (options: { data: Buffer }) => {
     }>;
   }>;
   destroy: () => Promise<void> | void;
+};
+
+type PdfParserConstructor = {
+  new (options: { data: Buffer }): PdfParserInstance;
+  setWorker: (workerSrc?: string) => string;
 };
 
 type CanvasPolyfills = {
@@ -144,7 +149,7 @@ function getOpenAIConfigErrorMessage(error: unknown) {
 }
 
 async function createOcrImagesFromPdf(
-  parser: InstanceType<PdfParserConstructor>,
+  parser: PdfParserInstance,
 ): Promise<{ images: OcrImageInput[]; totalPages: number }> {
   const ocrMaxPages = getOcrMaxPages();
   const screenshots = await parser.getScreenshot({
@@ -357,13 +362,17 @@ export async function POST(_request: Request, context: RouteContext) {
       });
     }
 
-    let parser: InstanceType<PdfParserConstructor> | null = null;
+    let parser: PdfParserInstance | null = null;
 
     try {
       await ensureCanvasPolyfills();
-      const { PDFParse } = (await import("pdf-parse")) as {
+      const { PDFParse } = (await import("pdf-parse") as unknown) as {
         PDFParse: PdfParserConstructor;
       };
+      const { getData } = (await import("pdf-parse/worker")) as {
+        getData: () => string;
+      };
+      PDFParse.setWorker(getData());
 
       parser = new PDFParse({ data: fileBuffer });
       const textResult = await parser.getText();
