@@ -8,7 +8,7 @@ Tài liệu này mô tả schema dự kiến cho Financial Report Intelligence. 
 - Không lưu insight AI như dữ liệu thật nếu chưa có bằng chứng và mức độ tin cậy.
 - Các phép tính tài chính ở các task sau phải được tính bằng công thức cố định trong code.
 - Người dùng phải kiểm tra dữ liệu đã trích xuất trước khi phân tích.
-- Raw extraction chỉ lưu text gốc từ PDF có text layer, chưa phân tích nội dung.
+- Raw extraction lưu text gốc từ PDF có text layer hoặc text OCR từ ảnh/PDF scan, chưa phân tích nội dung.
 - Structured extraction chỉ chuyển raw text thành JSON có cấu trúc, không tính toán, không nhận định và không tạo dữ liệu bị thiếu.
 
 ## `profiles`
@@ -54,7 +54,7 @@ Trạng thái dự kiến:
 
 ## `raw_extractions`
 
-Lưu text thô được trích xuất từ PDF có text layer. Bảng này không lưu kết quả phân tích tài chính, không chuẩn hóa bảng số liệu và không chứa insight AI.
+Lưu text thô được trích xuất từ PDF có text layer hoặc OCR từ ảnh/PDF scan. Bảng này không lưu kết quả phân tích tài chính, không chuẩn hóa bảng số liệu và không chứa insight AI.
 
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ Lưu text thô được trích xuất từ PDF có text layer. Bảng này khôn
 | `user_id` | `uuid` | Liên kết tới `auth.users.id` |
 | `raw_text` | `text` | Text thô trích xuất từ PDF |
 | `page_count` | `integer` | Nullable |
-| `extraction_method` | `text` | Ví dụ `pdf_text_layer` |
+| `extraction_method` | `text` | Ví dụ `pdf_text_layer`, `openai_vision_ocr` |
 | `status` | `text` | Trạng thái trích xuất |
 | `error_message` | `text` | Nullable |
 | `created_at` | `timestamp` | Thời điểm tạo |

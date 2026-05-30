@@ -51,7 +51,7 @@ const columns = [
 
 const statusLabels: Record<ReportStatus, string> = {
   uploaded: "Đã tải lên",
-  extracting: "Đang trích xuất text",
+  extracting: "Đang trích xuất text/OCR",
   extraction_failed: "Trích xuất thất bại",
   unsupported_file_type: "Chưa hỗ trợ OCR",
   no_text_layer: "Không có lớp text",
@@ -112,7 +112,7 @@ export function ReportsClientTable({ initialReports }: ReportsClientTableProps) 
     setProcessingRawReportId(reportId);
     setMessages((current) => ({
       ...current,
-      [reportId]: "Đang trích xuất text...",
+      [reportId]: "Đang trích xuất text hoặc OCR...",
     }));
     setReports((current) =>
       current.map((report) =>
@@ -126,13 +126,13 @@ export function ReportsClientTable({ initialReports }: ReportsClientTableProps) 
       });
       const result = await readJsonResponse<RawExtractionResponse>(
         response,
-        "Không thể trích xuất text từ báo cáo. Vui lòng kiểm tra log triển khai và thử lại.",
+        "Không thể trích xuất text hoặc OCR từ báo cáo. Vui lòng kiểm tra log triển khai và thử lại.",
       );
 
       if (!response.ok) {
         setMessages((current) => ({
           ...current,
-          [reportId]: result.message || "Không thể trích xuất text từ báo cáo.",
+          [reportId]: result.message || "Không thể trích xuất text hoặc OCR từ báo cáo.",
         }));
 
         setReports((current) =>
@@ -319,7 +319,7 @@ export function ReportsClientTable({ initialReports }: ReportsClientTableProps) 
                           }
                           className="rounded-xl border border-cyan-100/25 bg-cyan-300/15 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {isRawProcessing ? "Đang trích xuất..." : "Trích xuất text"}
+                          {isRawProcessing ? "Đang trích xuất..." : "Trích xuất text/OCR"}
                         </button>
                         {preview ? (
                           <button
@@ -370,7 +370,7 @@ export function ReportsClientTable({ initialReports }: ReportsClientTableProps) 
                       ) : null}
                       {!canExtractStructured ? (
                         <p className="mt-2 max-w-xs text-xs leading-5 text-cyan-50/55">
-                          Cần trích xuất text thô trước khi trích xuất dữ liệu tài chính.
+                          Cần trích xuất text thô hoặc OCR trước khi trích xuất dữ liệu tài chính.
                         </p>
                       ) : null}
                     </td>

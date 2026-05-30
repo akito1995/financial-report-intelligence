@@ -1,6 +1,6 @@
 # Hướng dẫn setup dự án
 
-Financial Report Intelligence hiện hỗ trợ đăng nhập Supabase Auth, tải file lên Supabase Storage, tạo bản ghi `reports`, trích xuất text thô từ PDF có text layer và chuyển raw text thành dữ liệu tài chính có cấu trúc bằng OpenAI server-side. Ứng dụng chưa OCR ảnh/PDF scan, chưa phân tích tài chính và chưa xuất PDF.
+Financial Report Intelligence hiện hỗ trợ đăng nhập Supabase Auth, tải file lên Supabase Storage, tạo bản ghi `reports`, trích xuất text thô từ PDF có text layer, OCR ảnh/PDF scan bằng OpenAI Vision server-side và chuyển raw text thành dữ liệu tài chính có cấu trúc. Ứng dụng chưa phân tích tài chính và chưa xuất PDF.
 
 ## 1. Cài dependencies
 
@@ -35,13 +35,15 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
+OCR_MAX_PAGES=5
 ```
 
 Hiện app cần:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `OPENAI_API_KEY` nếu dùng chức năng trích xuất dữ liệu tài chính có cấu trúc
+- `OPENAI_API_KEY` nếu dùng OCR hoặc chức năng trích xuất dữ liệu tài chính có cấu trúc
+- `OCR_MAX_PAGES` để giới hạn số trang PDF scan được OCR trong một lần xử lý, mặc định là `5`
 
 `SUPABASE_SERVICE_ROLE_KEY` không được dùng ở client. Không commit `.env.local` hoặc key thật lên GitHub.
 
@@ -125,7 +127,12 @@ using (auth.uid() = user_id);
 
 ## 8. Bảng `raw_extractions`
 
-Task 3.1 chỉ trích xuất raw text từ PDF có text layer. File ảnh, PDF scan hoặc PDF không có text layer sẽ cần OCR ở task sau.
+Raw extraction ưu tiên lấy text layer từ PDF. Nếu PDF không có text layer hoặc người dùng tải ảnh scan PNG/JPG/JPEG, hệ thống dùng OpenAI Vision server-side để OCR và lưu kết quả vào cùng bảng `raw_extractions`.
+
+`extraction_method` có thể là:
+
+- `pdf_text_layer`
+- `openai_vision_ocr`
 
 ```sql
 create table if not exists public.raw_extractions (
@@ -265,12 +272,13 @@ using (
 
 ## 13. OpenAI
 
-Chức năng trích xuất dữ liệu tài chính có cấu trúc dùng OpenAI API ở server-side.
+OCR ảnh/PDF scan và chức năng trích xuất dữ liệu tài chính có cấu trúc dùng OpenAI API ở server-side.
 
 Local:
 
 ```env
 OPENAI_API_KEY=sk-...
+OCR_MAX_PAGES=5
 ```
 
 Vercel:
@@ -278,7 +286,8 @@ Vercel:
 1. Mở Project Settings.
 2. Vào Environment Variables.
 3. Thêm `OPENAI_API_KEY`.
-4. Redeploy project sau khi lưu biến môi trường.
+4. Có thể thêm `OCR_MAX_PAGES`, ví dụ `5`.
+5. Redeploy project sau khi lưu biến môi trường.
 
 Không đặt `OPENAI_API_KEY` trong biến bắt đầu bằng `NEXT_PUBLIC_`. Không commit key thật vào GitHub.
 
@@ -289,6 +298,7 @@ Sau khi deploy Vercel, kiểm tra các biến môi trường đã được set �
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `OPENAI_API_KEY`
+- `OCR_MAX_PAGES`
 
 Nếu app hiện chưa dùng service role ở runtime, có thể chưa cần set `SUPABASE_SERVICE_ROLE_KEY` trên Vercel. Sau khi thêm hoặc sửa biến môi trường, redeploy project.
 
@@ -301,11 +311,11 @@ Nếu app hiện chưa dùng service role ở runtime, có thể chưa cần set
 - Query report, raw extraction và structured extraction phải lọc theo `user_id`.
 - Không log raw text dài ra console.
 - Không log response OpenAI đầy đủ nếu quá dài.
-- Task 3.2 chỉ gửi `raw_text` đã lưu trong database cho OpenAI, không gửi file gốc.
+- OCR gửi ảnh trang PDF đã render hoặc ảnh scan cho OpenAI, không gửi secret key ra client.
+- Task structured extraction chỉ gửi `raw_text` đã lưu trong database cho OpenAI, không gửi file gốc.
 
 ## 16. Phạm vi chưa triển khai
 
-- OCR ảnh hoặc PDF scan.
 - Màn hình review và chỉnh sửa số liệu.
 - Phân tích báo cáo tài chính.
 - Tính metrics.
