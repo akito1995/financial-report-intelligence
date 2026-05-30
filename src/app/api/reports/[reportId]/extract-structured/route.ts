@@ -18,6 +18,22 @@ function createJsonResponse(message: string, status: number, extra?: Record<stri
   return NextResponse.json({ message, ...extra }, { status });
 }
 
+function removePageMarkers(rawText: string) {
+  return rawText
+    .replace(/[-–—\s]*\d+\s+of\s+\d+[-–—\s]*/gi, " ")
+    .replace(/[-–—\s]*trang\s+\d+\s*(\/|of)?\s*\d*[-–—\s]*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasEnoughRawTextForStructuredExtraction(rawText: string) {
+  const cleanedText = removePageMarkers(rawText);
+  const letterMatches = cleanedText.match(/\p{L}/gu) ?? [];
+  const digitMatches = cleanedText.match(/\d/g) ?? [];
+
+  return cleanedText.length >= 200 && letterMatches.length >= 80 && digitMatches.length >= 20;
+}
+
 export async function POST(_request: Request, context: RouteContext) {
   const { reportId } = await context.params;
   const supabase = await createServerSupabaseClient();
@@ -71,6 +87,13 @@ export async function POST(_request: Request, context: RouteContext) {
     return createJsonResponse(
       "Báo cáo chưa có text thô. Vui lòng trích xuất text trước.",
       400,
+    );
+  }
+
+  if (!hasEnoughRawTextForStructuredExtraction(rawExtraction.raw_text)) {
+    return createJsonResponse(
+      "Text thô hiện tại không đủ nội dung tài chính để trích xuất dữ liệu. Vui lòng bấm Trích xuất text/OCR lại để hệ thống OCR bản scan.",
+      422,
     );
   }
 

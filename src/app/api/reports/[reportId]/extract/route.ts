@@ -8,6 +8,7 @@ export const maxDuration = 60;
 
 const storageBucketName = "financial-reports";
 const minimumTextLength = 50;
+const minimumMeaningfulTextLength = 200;
 const defaultOcrMaxPages = 5;
 
 type RouteContext = {
@@ -103,6 +104,26 @@ function sanitizeRawText(rawText: string) {
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .trim();
+}
+
+function removePageMarkers(rawText: string) {
+  return rawText
+    .replace(/[-–—\s]*\d+\s+of\s+\d+[-–—\s]*/gi, " ")
+    .replace(/[-–—\s]*trang\s+\d+\s*(\/|of)?\s*\d*[-–—\s]*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasMeaningfulFinancialText(rawText: string) {
+  const cleanedText = removePageMarkers(sanitizeRawText(rawText));
+  const letterMatches = cleanedText.match(/\p{L}/gu) ?? [];
+  const digitMatches = cleanedText.match(/\d/g) ?? [];
+
+  return (
+    cleanedText.length >= minimumMeaningfulTextLength &&
+    letterMatches.length >= 80 &&
+    digitMatches.length >= 20
+  );
 }
 
 function createJsonResponse(message: string, status: number, extra?: Record<string, unknown>) {
@@ -419,7 +440,7 @@ export async function POST(_request: Request, context: RouteContext) {
       const textResult = await parser.getText();
       const rawText = textResult.text.trim();
 
-      if (rawText.length >= minimumTextLength) {
+      if (rawText.length >= minimumTextLength && hasMeaningfulFinancialText(rawText)) {
         return saveCompletedExtraction({
           rawText,
           pageCount: textResult.total || null,
