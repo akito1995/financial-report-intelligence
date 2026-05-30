@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { RawExtractionStatus, ReportStatus } from "@/types/report";
 
@@ -12,6 +11,14 @@ type RouteContext = {
   params: Promise<{
     reportId: string;
   }>;
+};
+
+type PdfParserConstructor = new (options: { data: Buffer }) => {
+  getText: () => Promise<{
+    text: string;
+    total?: number;
+  }>;
+  destroy: () => Promise<void> | void;
 };
 
 function isPdfReport(fileName: string, fileType: string) {
@@ -131,9 +138,12 @@ export async function POST(_request: Request, context: RouteContext) {
       });
     }
 
-    let parser: PDFParse | null = null;
+    let parser: InstanceType<PdfParserConstructor> | null = null;
 
     try {
+      const { PDFParse } = (await import("pdf-parse")) as {
+        PDFParse: PdfParserConstructor;
+      };
       const fileBuffer = Buffer.from(await fileBlob.arrayBuffer());
       parser = new PDFParse({ data: fileBuffer });
       const textResult = await parser.getText();
