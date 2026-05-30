@@ -1,6 +1,6 @@
 # Hướng dẫn setup dự án
 
-Financial Report Intelligence hiện hỗ trợ đăng nhập Supabase Auth, tải file lên Supabase Storage, tạo bản ghi `reports`, và trích xuất text thô từ PDF có text layer. Ứng dụng chưa OCR ảnh/PDF scan, chưa gọi OpenAI, chưa phân tích tài chính và chưa xuất PDF.
+Financial Report Intelligence hiện hỗ trợ đăng nhập Supabase Auth, tải file lên Supabase Storage, tạo bản ghi `reports`, trích xuất text thô từ PDF có text layer và chuyển raw text thành dữ liệu tài chính có cấu trúc bằng OpenAI server-side. Ứng dụng chưa OCR ảnh/PDF scan, chưa phân tích tài chính và chưa xuất PDF.
 
 ## 1. Cài dependencies
 
@@ -28,6 +28,8 @@ http://localhost:3000
 
 ## 3. Biến môi trường
 
+Tạo file `.env.local` từ `.env.example` và điền các giá trị thật:
+
 ```env
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
@@ -39,8 +41,9 @@ Hiện app cần:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `OPENAI_API_KEY` nếu dùng chức năng trích xuất dữ liệu tài chính có cấu trúc
 
-`SUPABASE_SERVICE_ROLE_KEY` và `OPENAI_API_KEY` chưa được dùng trong client. Không commit key thật lên GitHub.
+`SUPABASE_SERVICE_ROLE_KEY` không được dùng ở client. Không commit `.env.local` hoặc key thật lên GitHub.
 
 ## 4. Supabase Auth
 
@@ -86,10 +89,11 @@ create index if not exists reports_user_id_created_at_idx
   on public.reports (user_id, created_at desc);
 ```
 
-Nếu bảng đã tồn tại trước Task 3.1, cập nhật constraint/status theo nhu cầu nội bộ. App hiện dùng thêm các status:
+App hiện dùng thêm các status:
 
 - `unsupported_file_type`
 - `no_text_layer`
+- `extracting_structured_data`
 - `ready_for_review`
 
 ## 7. RLS cho `reports`
@@ -168,7 +172,58 @@ for delete
 using (auth.uid() = user_id);
 ```
 
-## 10. Storage policies
+## 10. Bảng `extracted_statements`
+
+Task 3.2 chỉ chuyển raw text đã trích xuất thành JSON có cấu trúc. Bước này không phân tích tài chính, không tính chỉ số, không phát hiện bất thường và không tự tạo số liệu bị thiếu.
+
+```sql
+create table if not exists public.extracted_statements (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references public.reports(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  statement_type text not null,
+  period text null,
+  currency text null,
+  unit text null,
+  data jsonb not null,
+  warnings jsonb null,
+  confidence numeric null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists extracted_statements_user_report_created_idx
+  on public.extracted_statements (user_id, report_id, created_at desc);
+```
+
+## 11. RLS cho `extracted_statements`
+
+```sql
+alter table public.extracted_statements enable row level security;
+
+create policy "Nguoi dung xem du lieu trich xuat cua chinh minh"
+on public.extracted_statements
+for select
+using (auth.uid() = user_id);
+
+create policy "Nguoi dung tao du lieu trich xuat cua chinh minh"
+on public.extracted_statements
+for insert
+with check (auth.uid() = user_id);
+
+create policy "Nguoi dung cap nhat du lieu trich xuat cua chinh minh"
+on public.extracted_statements
+for update
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "Nguoi dung xoa du lieu trich xuat cua chinh minh"
+on public.extracted_statements
+for delete
+using (auth.uid() = user_id);
+```
+
+## 12. Storage policies
 
 ```sql
 create policy "Nguoi dung tai file vao thu muc cua minh"
@@ -208,31 +263,53 @@ using (
 );
 ```
 
-## 11. Vercel
+## 13. OpenAI
 
-Sau khi deploy Vercel, kiểm tra các biến môi trường Supabase đã được set đúng:
+Chức năng trích xuất dữ liệu tài chính có cấu trúc dùng OpenAI API ở server-side.
+
+Local:
+
+```env
+OPENAI_API_KEY=sk-...
+```
+
+Vercel:
+
+1. Mở Project Settings.
+2. Vào Environment Variables.
+3. Thêm `OPENAI_API_KEY`.
+4. Redeploy project sau khi lưu biến môi trường.
+
+Không đặt `OPENAI_API_KEY` trong biến bắt đầu bằng `NEXT_PUBLIC_`. Không commit key thật vào GitHub.
+
+## 14. Vercel
+
+Sau khi deploy Vercel, kiểm tra các biến môi trường đã được set đúng:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `OPENAI_API_KEY`
 
-Sau khi thêm hoặc sửa biến môi trường, redeploy project.
+Nếu app hiện chưa dùng service role ở runtime, có thể chưa cần set `SUPABASE_SERVICE_ROLE_KEY` trên Vercel. Sau khi thêm hoặc sửa biến môi trường, redeploy project.
 
-## 12. Lưu ý bảo mật
+## 15. Lưu ý bảo mật
 
 - Không commit `.env.local`.
 - Không commit secret key.
 - Không expose `SUPABASE_SERVICE_ROLE_KEY` ra client.
-- Query report và raw extraction phải lọc theo `user_id`.
+- Không expose `OPENAI_API_KEY` ra client.
+- Query report, raw extraction và structured extraction phải lọc theo `user_id`.
 - Không log raw text dài ra console.
-- Không gửi file hoặc text cho OpenAI trong Task 3.1.
+- Không log response OpenAI đầy đủ nếu quá dài.
+- Task 3.2 chỉ gửi `raw_text` đã lưu trong database cho OpenAI, không gửi file gốc.
 
-## 13. Phạm vi chưa triển khai
+## 16. Phạm vi chưa triển khai
 
 - OCR ảnh hoặc PDF scan.
-- Extract bảng tài chính thành JSON.
+- Màn hình review và chỉnh sửa số liệu.
 - Phân tích báo cáo tài chính.
 - Tính metrics.
 - Phát hiện bất thường.
-- Tạo insight AI.
+- Tạo insight đánh giá doanh nghiệp.
 - Dashboard thật.
 - Xuất PDF.

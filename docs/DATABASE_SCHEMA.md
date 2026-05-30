@@ -8,7 +8,8 @@ Tài liệu này mô tả schema dự kiến cho Financial Report Intelligence. 
 - Không lưu insight AI như dữ liệu thật nếu chưa có bằng chứng và mức độ tin cậy.
 - Các phép tính tài chính ở các task sau phải được tính bằng công thức cố định trong code.
 - Người dùng phải kiểm tra dữ liệu đã trích xuất trước khi phân tích.
-- Task trích xuất text thô chỉ lưu text gốc từ PDF có text layer, chưa phân tích nội dung.
+- Raw extraction chỉ lưu text gốc từ PDF có text layer, chưa phân tích nội dung.
+- Structured extraction chỉ chuyển raw text thành JSON có cấu trúc, không tính toán, không nhận định và không tạo dữ liệu bị thiếu.
 
 ## `profiles`
 
@@ -40,6 +41,7 @@ Trạng thái dự kiến:
 
 - `uploaded`
 - `extracting`
+- `extracting_structured_data`
 - `extraction_failed`
 - `unsupported_file_type`
 - `no_text_layer`
@@ -78,18 +80,22 @@ Trạng thái dự kiến:
 
 ## `extracted_statements`
 
+Lưu dữ liệu tài chính có cấu trúc được trích xuất từ `raw_extractions.raw_text`. Bảng này chưa phải dữ liệu đã được người dùng kiểm tra và không chứa phân tích tài chính.
+
 | Cột | Kiểu dữ liệu | Ghi chú |
 | --- | --- | --- |
 | `id` | `uuid` | Primary key |
 | `report_id` | `uuid` | Liên kết tới `reports.id` |
-| `statement_type` | `text` | Loại báo cáo tài chính |
+| `user_id` | `uuid` | Liên kết tới `auth.users.id` |
+| `statement_type` | `text` | Loại dữ liệu trích xuất |
 | `period` | `text` | Nullable |
 | `currency` | `text` | Nullable |
 | `unit` | `text` | Nullable |
-| `data` | `jsonb` | Dữ liệu đã trích xuất |
+| `data` | `jsonb` | JSON structured extraction theo schema cố định |
 | `warnings` | `jsonb` | Nullable |
 | `confidence` | `numeric` | Nullable |
 | `created_at` | `timestamp` | Thời điểm tạo |
+| `updated_at` | `timestamp` | Thời điểm cập nhật |
 
 ## `financial_metrics`
 

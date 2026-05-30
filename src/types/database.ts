@@ -79,6 +79,7 @@ export interface SupabaseDatabase {
         Row: {
           id: string;
           report_id: string;
+          user_id: string;
           statement_type: string;
           period: string | null;
           currency: string | null;
@@ -87,10 +88,12 @@ export interface SupabaseDatabase {
           warnings: JsonValue | null;
           confidence: number | null;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
           report_id: string;
+          user_id: string;
           statement_type: string;
           period?: string | null;
           currency?: string | null;
@@ -99,10 +102,12 @@ export interface SupabaseDatabase {
           warnings?: JsonValue | null;
           confidence?: number | null;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
           report_id?: string;
+          user_id?: string;
           statement_type?: string;
           period?: string | null;
           currency?: string | null;
@@ -111,6 +116,7 @@ export interface SupabaseDatabase {
           warnings?: JsonValue | null;
           confidence?: number | null;
           created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
