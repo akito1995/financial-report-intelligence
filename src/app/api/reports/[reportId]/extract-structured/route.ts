@@ -73,24 +73,27 @@ export async function POST(_request: Request, context: RouteContext) {
       .eq("user_id", userId);
   }
 
-  const { data: rawExtraction, error: rawExtractionError } = await supabase
+  const { data: rawExtractions, error: rawExtractionError } = await supabase
     .from("raw_extractions")
     .select("*")
     .eq("report_id", currentReport.id)
     .eq("user_id", userId)
     .eq("status", "completed")
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(10);
 
-  if (rawExtractionError || !rawExtraction?.raw_text) {
+  if (rawExtractionError || !rawExtractions || rawExtractions.length === 0) {
     return createJsonResponse(
-      "Báo cáo chưa có text thô. Vui lòng trích xuất text trước.",
+      "Báo cáo chưa có text thô. Vui lòng trích xuất text/OCR trước.",
       400,
     );
   }
 
-  if (!hasEnoughRawTextForStructuredExtraction(rawExtraction.raw_text)) {
+  const rawExtraction = rawExtractions.find((extraction) =>
+    hasEnoughRawTextForStructuredExtraction(extraction.raw_text),
+  );
+
+  if (!rawExtraction) {
     return createJsonResponse(
       "Text thô hiện tại không đủ nội dung tài chính để trích xuất dữ liệu. Vui lòng bấm Trích xuất text/OCR lại để hệ thống OCR bản scan.",
       422,

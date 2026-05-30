@@ -12,6 +12,22 @@ function createPreview(rawText: string) {
   return rawText.replace(/\s+/g, " ").trim().slice(0, 2000);
 }
 
+function removePageMarkers(rawText: string) {
+  return rawText
+    .replace(/[-–—\s]*\d+\s+of\s+\d+[-–—\s]*/gi, " ")
+    .replace(/[-–—\s]*trang\s+\d+\s*(\/|of)?\s*\d*[-–—\s]*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasMeaningfulFinancialText(rawText: string) {
+  const cleanedText = removePageMarkers(rawText);
+  const letterMatches = cleanedText.match(/\p{L}/gu) ?? [];
+  const digitMatches = cleanedText.match(/\d/g) ?? [];
+
+  return cleanedText.length >= 200 && letterMatches.length >= 80 && digitMatches.length >= 20;
+}
+
 function isFinancialExtractionResult(value: unknown): value is FinancialExtractionResult {
   if (!value || typeof value !== "object") {
     return false;
@@ -115,7 +131,11 @@ export async function ReportsTable() {
 
     latestExtractionByReportId = new Map();
     (extractions ?? []).forEach((extraction) => {
-      if (!latestExtractionByReportId.has(extraction.report_id)) {
+      if (
+        !latestExtractionByReportId.has(extraction.report_id) &&
+        extraction.status === "completed" &&
+        hasMeaningfulFinancialText(extraction.raw_text)
+      ) {
         latestExtractionByReportId.set(extraction.report_id, extraction);
       }
     });
